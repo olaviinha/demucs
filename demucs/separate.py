@@ -17,6 +17,9 @@ from .apply import apply_model, BagOfModels
 from .audio import AudioFile, convert_audio, save_audio
 from .pretrained import get_model_from_args, add_model_flags, ModelLoadingError
 
+import gc
+gc.collect()
+th.cuda.empty_cache() 
 
 def load_track(track, audio_channels, samplerate):
     errors = {}
