@@ -1,8 +1,27 @@
 # Release notes for Demucs
 
-## V3.0.5a, TBC
+
+## V4.0.0, 7th of December 2022
+
+Adding hybrid transformer Demucs model.
+
+Added support for [Torchaudio implementation of HDemucs](https://pytorch.org/audio/main/tutorials/hybrid_demucs_tutorial.html), thanks @skim0514.
+
+Added experimental 6 sources model `htdemucs_6s` (`drums`, `bass`, `other`, `vocals`, `piano`, `guitar`).
+
+## V3.0.6, 16th of November 2022
+
+Option to customize output path of stems (@CarlGao4)
+
+Fixed bug in pad1d leading to failure sometimes.
+
+## V3.0.5, 17th of August 2022
 
 Added `--segment` flag to customize the segment length and use less memory (thanks @CarlGao4).
+
+Fix reflect padding bug on small inputs.
+
+Compatible with pyTorch 1.12
 
 ## V3.0.4, 24th of February 2022
 

@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
+# Copyright (c) Meta, Inc. and its affiliates.
 # All rights reserved.
 #
 # This source code is licensed under the license found in the
@@ -210,6 +210,7 @@ def encode_mp3(wav, path, samplerate=44100, bitrate=320, verbose=False):
     encoder.set_quality(2)  # 2-highest, 7-fastest
     if not verbose:
         encoder.silence()
+    wav = wav.data.cpu()
     wav = wav.transpose(0, 1).numpy()
     mp3_data = encoder.encode(wav.tobytes())
     mp3_data += encoder.flush()
@@ -243,7 +244,7 @@ def save_audio(wav, path, samplerate, bitrate=320, clip='rescale',
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".mp3":
-        encode_mp3(wav, path, samplerate, bitrate)
+        encode_mp3(wav, path, samplerate, bitrate, verbose=True)
     elif suffix == ".wav":
         if as_float:
             bits_per_sample = 32

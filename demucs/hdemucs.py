@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
+# Copyright (c) Meta, Inc. and its affiliates.
 # All rights reserved.
 #
 # This source code is licensed under the license found in the
@@ -8,6 +8,7 @@ This code contains the spectrogram and Hybrid version of Demucs.
 """
 from copy import deepcopy
 import math
+import typing as tp
 
 from openunmix.filtering import wiener
 import torch
@@ -17,6 +18,26 @@ from torch.nn import functional as F
 from .demucs import DConv, rescale_module
 from .states import capture_init
 from .spec import spectro, ispectro
+
+
+def pad1d(x: torch.Tensor, paddings: tp.Tuple[int, int], mode: str = 'constant', value: float = 0.):
+    """Tiny wrapper around F.pad, just to allow for reflect padding on small input.
+    If this is the case, we insert extra 0 padding to the right before the reflection happen."""
+    x0 = x
+    length = x.shape[-1]
+    padding_left, padding_right = paddings
+    if mode == 'reflect':
+        max_pad = max(padding_left, padding_right)
+        if length <= max_pad:
+            extra_pad = max_pad - length + 1
+            extra_pad_right = min(padding_right, extra_pad)
+            extra_pad_left = extra_pad - extra_pad_right
+            paddings = (padding_left - extra_pad_left, padding_right - extra_pad_right)
+            x = F.pad(x, (extra_pad_left, extra_pad_right))
+    out = F.pad(x, paddings, mode, value)
+    assert out.shape[-1] == length + padding_left + padding_right
+    assert (out[..., padding_left: padding_left + length] == x0).all()
+    return out
 
 
 class ScaledEmbedding(nn.Module):
@@ -580,9 +601,9 @@ class HDemucs(nn.Module):
             le = int(math.ceil(x.shape[-1] / hl))
             pad = hl // 2 * 3
             if not self.hybrid_old:
-                x = F.pad(x, (pad, pad + le * hl - x.shape[-1]), mode='reflect')
+                x = pad1d(x, (pad, pad + le * hl - x.shape[-1]), mode='reflect')
             else:
-                x = F.pad(x, (pad, pad + le * hl - x.shape[-1]))
+                x = pad1d(x, (pad, pad + le * hl - x.shape[-1]))
 
         z = spectro(x, nfft, hl)[..., :-1, :]
         if self.hybrid:

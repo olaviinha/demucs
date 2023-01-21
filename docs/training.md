@@ -16,14 +16,19 @@ Get the [Musdb HQ](https://zenodo.org/record/3338373) dataset, and update the pa
 
 ### Create the fine tuning datasets
 
+**This is only for the MDX 2021 competition models**
+
 I use a fine tuning on a dataset crafted by remixing songs in a musically plausible way.
 The automix script will make sure that BPM, first beat and pitches are aligned.
 In the file `tools/automix.py`, edit `OUTPATH` to suit your setup, as well as the `MUSDB_PATH`
 to point to your copy of MusDB HQ. Then run
 
 ```bash
-python3 -m tools.automix
+export NUMBA_NUM_THREADS=1; python3 -m tools.automix
 ```
+
+**Important:** the script will show many errors, those are normals. They just indicate when two stems
+ do not batch due to BPM or music scale difference.
 
 Finally, edit the file `conf/dset/auto_mus.yaml` and replace `dset.wav` to the value of `OUTPATH`.
 
@@ -83,6 +88,19 @@ Have a look at [conf/config.yaml](../conf/config.yaml) for a list of all the hyp
 If you are not familiar with [Hydra](https://github.com/facebookresearch/hydra), go checkout their page
 to be familiar with how to provide overrides for your trainings.
 
+
+## Model architecture
+
+A number of architectures are supported. You can select one with `model=NAME`, and have a look
+in [conf/config.yaml'(../conf/config.yaml) for each architecture specific hyperparams.
+Those specific params will be always prefixed with the architecture name when passing the override
+from the command line or in grid files. Here is the list of models:
+
+- demucs: original time-only Demucs.
+- hdemucs: Hybrid Demucs (v3).
+- torch_hdemucs: Same as Hybrid Demucs, but using [torchaudio official implementation](https://pytorch.org/audio/stable/tutorials/hybrid_demucs_tutorial.html).
+- htdemucs: Hybrid Transformer Demucs (v4).
+
 ### Storing config in files
 
 As mentioned earlier, you should never change the base config files. However, you can use Hydra config groups
@@ -90,7 +108,7 @@ in order to store variants you often use. If you want to create a new variant co
 copy the file `conf/variant/example.yaml` to `conf/variant/my_variant.yaml`, and then you can use it with
 
 ```bash
-dora train -d variant=my_variant
+dora run -d variant=my_variant
 ```
 
 Once you have created this file, you should not edit it once you have started training models with it.
@@ -138,23 +156,71 @@ If you want to combine multiple models, potentially with different weights for e
 demucs --repo ./release_models -n my_bag my_track.mp3
 ```
 
-You can also evaluate your bag of model with the following command:
+## Model evaluation
+
+You can evaluate any pre-trained model or bag of models using the following command:
+```bash
+python3 -m tools.test_pretrained -n NAME_OF_MODEL [EXTRA ARGS]
+```
+where `NAME_OF_MODEL` is either the name of the bag (e.g. `mdx`, `repro_mdx_a`),
+or a single Dora signature of one of the model of the bags. You can pass `EXTRA ARGS` to customize
+the test options, like the number of random shifts (e.g. `test.shifts=2`). This will compute the old-style
+SDR and can take quite  bit of time.
+
+For custom models that were trained locally, you will need to indicate that you wish
+to use the local model repositories, with the `--repo ./release_models` flag, e.g.,
 ```bash
 python3 -m tools.test_pretrained --repo ./release_models -n my_bag
 ```
 
+
+## API to retrieve the model
+
+You can retrieve officially released models in Python using the following API:
+```python
+from demucs import pretrained
+from demucs.apply import apply_model
+bag = pretrained.get_model('htdemucs')    # for a bag of models or a named model
+                                          # (which is just a bag with 1 model).
+model = pretrained.get_model('955717e8')  # using the signature for single models.
+
+bag.models                       # list of individual models
+stems = apply_model(model, mix)  # apply the model to the given mix.
+```
+
 ## Model Zoo
 
-  
- **About Wiener filtering**: It came to my attention that in fact none of the model were trained with Wiener filtering. In particular, using Wiener filtering at train time was too slow, while using it only at test time led to worse performance, as this would change the output of the spectrogram prediction without giving a chance to the waveform one to adapt. I will update the paper and code documentation to make that clear.
+### Hybrid Transformer Demucs
 
+The configuration for the Hybrid Transformer models are available in:
+
+```shell
+dora grid mmi --dry_run --init
+dora grid mmi_ft --dry_run --init  # fined tuned on each sources.
+```
+
+We release in particular `955717e8`, Hybrid Transformer Demucs using 5 layers, 512 channels, 10 seconds training segment length. We also release its fine tuned version, with one model
+for each source `f7e0c4bc`, `d12395a8`, `92cfc3b6`, `04573f0d` (drums, bass, other, vocals).
+The model `955717e8` is also named `htdemucs`, while the bag of models is provided
+as `htdemucs_ft`.
+
+We also release `75fc33f5`, a regular Hybrid Demucs trained on the same dataset,
+available as `hdemucs_mmi`.
+
+
+
+### Models from the MDX Competition 2021
+
+  
 Here is a short descriptions of the models used for the MDX submission, either Track A (MusDB HQ only)
 or Track B (extra training data allowed). Training happen in two stage, with the second stage
 being the fine tunining on the automix generated dataset.
 All the fine tuned models are available on our AWS repository
-(you can retrieve it with `demucs.pretrained.get_model(SIG)`).
+(you can retrieve it with `demucs.pretrained.get_model(SIG)`). The bag of models are available
+by doing `demucs.pretrained.get_model(NAME)` with `NAME` begin either `mdx` (for Track A) or `mdx_extra`
+(for Track B).
 
-### Track A
+#### Track A
 
 The 4 models are:
 
@@ -184,7 +250,7 @@ dora grid mdx --dry_run --init
 dora grid mdx --dry_run --init
 ```
 
-### Track B
+#### Track B
 
 - `e51eebcc`
 - `a1d90b5c`
@@ -204,5 +270,21 @@ Similarly you can do (those will contain a few extra lines, for training without
 dora grid mdx_extra --dry_run --init
 ```
 
+### Reproducibility and Ablation
+
+I updated the paper to report numbers with a more homogeneous setup than the one used for the competition.
+On MusDB HQ, I still need to use a combination of time only and hybrid models to achieve the best performance.
+The experiments are provided in the grids [repro.py](../demucs/grids/repro.py) and
+[repro_ft._py](../demucs/grids/repro_ft.py) for the fine tuning on the realistic mix datasets.
+
+The new bag of models reaches an SDR of 7.64 (vs. 7.68 for the original track A model). It uses
+2 time only models trained with residual branches, local attention and the SVD penalty,
+along with 2 hybrid models, with the same features, and using CaC representation.
+We average the performance of all the models with the same weight over all sources, unlike
+what was done for the original track A model. We trained for 600 epochs, against 360 before.
+
+The new bag of model is available as part of the pretrained model as `repro_mdx_a`.
+The time only bag is named `repro_mdx_a_time_only`, and the hybrid only `repro_mdx_a_hybrid_only`.
+Checkout the paper for more information on the training.
 
 [dora]: https://github.com/facebookresearch/dora
